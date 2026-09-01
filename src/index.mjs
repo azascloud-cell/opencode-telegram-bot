@@ -44,6 +44,15 @@ function tokenPreview(token) {
   return `${token.slice(0, 4)}…${token.slice(-4)}`;
 }
 
+function findToken(user, selector) {
+  const value = selector.trim();
+  const numericIndex = Number.parseInt(value, 10);
+  if (String(numericIndex) === value && numericIndex >= 1) {
+    return user.tokens[numericIndex - 1];
+  }
+  return user.tokens.find((item) => item.id === value);
+}
+
 async function addToken(userId, value, label = "OpenCode Zen") {
   const token = value.trim();
   if (token.length < 12 || token.length > 300 || /\s/.test(token)) {
@@ -250,7 +259,7 @@ async function handleMessage(message) {
       if (!user.tokens.length) return reply(chatId, "Belum ada token. Gunakan /addtoken.");
       await reply(chatId, user.tokens.map((token, index) =>
         `${index + 1}. ${token.id} — ${tokenPreview(token.value)} — ${token.status}${token.id === user.activeTokenId ? " — aktif" : ""}`
-      ).join("\n"));
+      ).join("\n") + "\n\nGunakan /use <nomor> atau /use <id>.");
       return;
     }
     if (command === "/models") {
@@ -270,8 +279,9 @@ async function handleMessage(message) {
     if (command === "/use") {
       const state = await store.load();
       const user = userRecord(state, userId);
-      const token = user.tokens.find((item) => item.id === value);
-      if (!token) return reply(chatId, "ID token tidak ditemukan. Lihat daftar dengan /tokens.");
+      if (!value) return reply(chatId, "Contoh: /use 1 atau /use key-...");
+      const token = findToken(user, value);
+      if (!token) return reply(chatId, "Nomor atau ID token tidak ditemukan. Lihat daftar dengan /tokens.");
       user.activeTokenId = token.id;
       token.status = "active";
       await saveState(state);
@@ -279,8 +289,11 @@ async function handleMessage(message) {
       return;
     }
     if (command === "/remove") {
-      if (!value) return reply(chatId, "Contoh: /remove key-...");
-      await reply(chatId, (await removeToken(userId, value)) ? "Token dihapus." : "ID token tidak ditemukan.");
+      if (!value) return reply(chatId, "Contoh: /remove 1 atau /remove key-...");
+      const state = await store.load();
+      const user = userRecord(state, userId);
+      const token = findToken(user, value);
+      await reply(chatId, token && (await removeToken(userId, token.id)) ? "Token dihapus." : "Nomor atau ID token tidak ditemukan.");
       return;
     }
     if (command === "/status") {

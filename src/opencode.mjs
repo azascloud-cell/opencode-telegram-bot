@@ -9,6 +9,15 @@ const fallbackFreeModels = [
 
 function responseText(body) {
   if (typeof body?.output_text === "string") return body.output_text.trim();
+  if (typeof body?.choices?.[0]?.message?.content === "string") {
+    return body.choices[0].message.content.trim();
+  }
+  if (Array.isArray(body?.choices?.[0]?.message?.content)) {
+    return body.choices[0].message.content
+      .map((part) => part?.text ?? "")
+      .join("")
+      .trim();
+  }
   const chunks = [];
   for (const item of body?.output ?? []) {
     for (const content of item?.content ?? []) {
@@ -76,16 +85,28 @@ export class OpenCodeClient {
   }
 
   async complete(token, { model, system, prompt, maxOutputTokens = 3000 }) {
-    const body = await this.request("/responses", token, {
+    const usesResponsesApi = /^(gpt-|muse-spark-1\.2-contributor-free$)/i.test(model);
+    const endpoint = usesResponsesApi ? "/responses" : "/chat/completions";
+    const payload = usesResponsesApi
+      ? {
+          model,
+          input: [
+            { role: "system", content: [{ type: "input_text", text: system }] },
+            { role: "user", content: [{ type: "input_text", text: prompt }] }
+          ],
+          max_output_tokens: maxOutputTokens
+        }
+      : {
+          model,
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: prompt }
+          ],
+          max_tokens: maxOutputTokens
+        };
+    const body = await this.request(endpoint, token, {
       method: "POST",
-      body: JSON.stringify({
-        model,
-        input: [
-          { role: "system", content: [{ type: "input_text", text: system }] },
-          { role: "user", content: [{ type: "input_text", text: prompt }] }
-        ],
-        max_output_tokens: maxOutputTokens
-      })
+      body: JSON.stringify(payload)
     });
     const text = responseText(body);
     if (!text) throw new Error("OpenCode Zen returned an empty response.");
