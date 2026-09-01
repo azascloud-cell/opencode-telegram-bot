@@ -302,6 +302,9 @@ async function handleMessage(message) {
     }
     if (command === "/model") {
       if (!value) return reply(chatId, "Contoh: /model big-pickle");
+      if (!isKnownFreeModelId(value)) {
+        return reply(chatId, "Versi ini hanya mengizinkan model free. Gunakan /models untuk melihat pilihan yang aman.");
+      }
       const state = await store.load();
       const user = userRecord(state, userId);
       user.model = value;
