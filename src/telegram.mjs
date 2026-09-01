@@ -17,11 +17,31 @@ export class TelegramClient {
   }
 
   async getUpdates(offset) {
-    return this.call("getUpdates", { offset, timeout: 45, allowed_updates: ["message"] });
+    return this.call("getUpdates", {
+      offset,
+      timeout: 45,
+      allowed_updates: ["message", "callback_query"]
+    });
   }
 
   async sendMessage(chatId, text, options = {}) {
     return this.call("sendMessage", { chat_id: chatId, text, ...options });
+  }
+
+  async editMessageText(chatId, messageId, text, options = {}) {
+    return this.call("editMessageText", {
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      ...options
+    });
+  }
+
+  async answerCallbackQuery(callbackQueryId, text) {
+    return this.call("answerCallbackQuery", {
+      callback_query_id: callbackQueryId,
+      ...(text ? { text } : {})
+    });
   }
 
   async deleteMessage(chatId, messageId) {

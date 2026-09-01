@@ -1,6 +1,6 @@
 import { config, assertConfig } from "./config.mjs";
 import { GithubClient } from "./github.mjs";
-import { OpenCodeClient, fallbackFreeModels, isRotationError } from "./opencode.mjs";
+import { OpenCodeClient, fallbackFreeModels, isKnownFreeModelId, isRotationError } from "./opencode.mjs";
 import { StateStore } from "./state-store.mjs";
 import { TelegramClient, splitTelegramMessage } from "./telegram.mjs";
 
@@ -102,6 +102,7 @@ async function withRotatingToken(userId, operation) {
   });
   if (!ordered.length) throw new Error("Belum ada token. Gunakan /addtoken untuk menambahkan token OpenCode Zen.");
   let lastRotationError;
+  const failureKinds = new Set();
   for (const item of ordered) {
     try {
       const result = await operation(item.value, item);
@@ -113,13 +114,26 @@ async function withRotatingToken(userId, operation) {
       return result;
     } catch (error) {
       if (!isRotationError(error.status, error.body)) throw error;
-      item.status = "limited";
+      if (error.status === 401) {
+        item.status = "invalid";
+        failureKinds.add("ditolak (401)");
+      } else if (error.status === 429) {
+        item.status = "limited";
+        failureKinds.add("rate limit (429)");
+      } else if (error.status === 402) {
+        item.status = "no credit";
+        failureKinds.add("tidak punya kredit (402)");
+      } else {
+        item.status = "limited";
+        failureKinds.add("limit/quota");
+      }
       item.lastError = new Date().toISOString();
       lastRotationError = error;
       await saveState(state);
     }
   }
-  throw new Error(`Semua token sedang limit atau tidak punya kredit. Tambahkan token baru dengan /addtoken.${lastRotationError ? ` (${lastRotationError.message})` : ""}`);
+  const detail = failureKinds.size ? ` Penyebab: ${[...failureKinds].join(", ")}.` : "";
+  throw new Error(`Tidak ada token yang bisa dipakai saat ini.${detail} Error 401 berarti token ditolak atau expired, sedangkan 429 berarti rate limit. Tambahkan token baru dengan /addtoken.${lastRotationError ? ` (${lastRotationError.message})` : ""}`);
 }
 
 async function currentModels(userId) {
@@ -139,6 +153,16 @@ async function ask(userId, prompt) {
       maxOutputTokens: 3500
     })
   );
+}
+
+function modelKeyboard(models) {
+  const buttons = models.map((model) => ({
+    text: model.name === model.id ? model.id : `${model.name} (${model.id})`,
+    callback_data: `model:${model.id}`
+  }));
+  const rows = [];
+  for (let index = 0; index < buttons.length; index += 2) rows.push(buttons.slice(index, index + 2));
+  return { inline_keyboard: rows };
 }
 
 function safeSlug(value) {
@@ -264,7 +288,16 @@ async function handleMessage(message) {
     }
     if (command === "/models") {
       const models = await currentModels(userId);
-      await reply(chatId, models.slice(0, 30).map((model) => `${model.id}${model.free ? " — free" : ""}`).join("\n"));
+      const freeModels = models.filter((model) => model.free);
+      if (!freeModels.length) {
+        await reply(chatId, "Tidak ada model free yang terdeteksi dari OpenCode Zen saat ini. Coba lagi sebentar lagi.");
+        return;
+      }
+      await telegram.sendMessage(
+        chatId,
+        "Pilih model free OpenCode Zen:",
+        { reply_markup: modelKeyboard(freeModels.slice(0, 20)) }
+      );
       return;
     }
     if (command === "/model") {
@@ -329,6 +362,27 @@ async function handleMessage(message) {
   }
 }
 
+async function handleCallbackQuery(callbackQuery) {
+  const data = callbackQuery.data ?? "";
+  const chatId = callbackQuery.message?.chat?.id;
+  const messageId = callbackQuery.message?.message_id;
+  const userId = String(callbackQuery.from?.id ?? "");
+  if (!chatId || !messageId || !userId) return;
+  if (data.startsWith("model:")) {
+    const modelId = data.slice("model:".length);
+    if (!isKnownFreeModelId(modelId)) {
+      await telegram.answerCallbackQuery(callbackQuery.id, "Model free tidak dikenali.");
+      return;
+    }
+    const state = await store.load();
+    const user = userRecord(state, userId);
+    user.model = modelId;
+    await saveState(state);
+    await telegram.answerCallbackQuery(callbackQuery.id, "Model dipilih.");
+    await telegram.editMessageText(chatId, messageId, `Model aktif: ${modelId}`);
+  }
+}
+
 const startedAt = Date.now();
 const stopAt = startedAt + config.sessionMinutes * 60_000;
 
@@ -341,7 +395,8 @@ async function run() {
       const updates = await telegram.getUpdates(offset);
       for (const update of updates) {
         offset = update.update_id + 1;
-        await handleMessage(update.message);
+        if (update.callback_query) await handleCallbackQuery(update.callback_query);
+        else await handleMessage(update.message);
       }
     } catch (error) {
       await new Promise((resolve) => setTimeout(resolve, 5000));

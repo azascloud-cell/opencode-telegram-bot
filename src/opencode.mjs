@@ -7,6 +7,29 @@ const fallbackFreeModels = [
   { id: "muse-spark-1.2-contributor-free", name: "Muse Spark 1.2 Contributor Free", free: true }
 ];
 
+const knownFreeModelIds = new Set(fallbackFreeModels.map((model) => model.id));
+
+function hasZeroPrice(value) {
+  return value === 0 || value === "0" || value === "0.0" || value === "0.00";
+}
+
+function isFreeModel(item) {
+  const id = String(item?.id ?? "").toLowerCase();
+  const name = String(item?.name ?? "").toLowerCase();
+  const pricing = item?.pricing ?? item?.prices ?? {};
+  const inputPrice = pricing.input ?? pricing.prompt ?? pricing.input_token;
+  const outputPrice = pricing.output ?? pricing.completion ?? pricing.output_token;
+  return knownFreeModelIds.has(id) ||
+    Boolean(item?.free) ||
+    /free|pickle/.test(`${id} ${name}`) ||
+    (hasZeroPrice(inputPrice) && hasZeroPrice(outputPrice));
+}
+
+export function isKnownFreeModelId(modelId) {
+  const id = String(modelId ?? "").toLowerCase();
+  return knownFreeModelIds.has(id) || /free|pickle/.test(id);
+}
+
 function responseText(body) {
   if (typeof body?.output_text === "string") return body.output_text.trim();
   if (typeof body?.choices?.[0]?.message?.content === "string") {
@@ -34,7 +57,7 @@ function modelList(body) {
     .map((item) => ({
       id: item?.id,
       name: item?.name ?? item?.id,
-      free: /free|pickle/i.test(`${item?.id} ${item?.name ?? ""}`)
+      free: isFreeModel(item)
     }))
     .filter((item) => item.id);
 }

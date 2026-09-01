@@ -48,8 +48,8 @@ the bot must persist encrypted state and generated files in the same repository.
 - `/start` or `/addtoken` — securely add a token; the token message is deleted
   after receipt
 - `/tokens` — list masked token IDs and rotation status
-- `/models` — fetch the current OpenCode Zen model list
-- `/model <id>` — choose a model
+- `/models` — show only detected free models as inline buttons
+- `/model <id>` — choose a model manually
 - `/use <id>` — choose the active token
 - `/remove <id>` — remove a token
 - `/build <description>` — generate a project and commit it
@@ -57,6 +57,10 @@ the bot must persist encrypted state and generated files in the same repository.
 - `/stop` — end the current session
 
 Send any other private message as a coding prompt.
+
+`401` means OpenCode Zen rejected a token (usually invalid or expired).
+`429` means the token hit a rate limit. The rotation pool treats them
+differently and tries the next token when appropriate.
 
 ## Security notes
 
