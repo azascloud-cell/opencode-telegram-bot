@@ -1,0 +1,37 @@
+name: OpenCode Telegram Bot
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Start every six hours. The bot exits cleanly after 5h50m.
+    - cron: "0 */6 * * *"
+
+concurrency:
+  group: opencode-telegram-bot
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run bot
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          STATE_ENCRYPTION_KEY: ${{ secrets.STATE_ENCRYPTION_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          OPENCODE_ZEN_BASE_URL: https://opencode.ai/zen/v1
+          SESSION_MINUTES: 350
+        run: npm start

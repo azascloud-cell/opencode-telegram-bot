@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+data/state.enc
+data/state.json
+node_modules/
+npm-debug.log*
+pnpm-debug.log*

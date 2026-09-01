@@ -1,0 +1,15 @@
+{
+  "name": "opencode-telegram-bot",
+  "version": "1.0.0",
+  "private": false,
+  "description": "Telegram-first OpenCode Zen coding bot with GitHub Actions runtime.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.mjs",
+    "check": "node --check src/index.mjs && node --check src/config.mjs && node --check src/crypto-state.mjs && node --check src/github.mjs && node --check src/opencode.mjs && node --check src/pterodactyl.mjs && node --check src/state-store.mjs && node --check src/telegram.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
